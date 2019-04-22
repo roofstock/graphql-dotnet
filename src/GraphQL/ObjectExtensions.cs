@@ -69,6 +69,11 @@ namespace GraphQL
             if (fieldType.Name != "String"
                 && enumerableInterface != null)
             {
+                if (propertyValue == null)
+                {
+                    return null;
+                }
+
                 IList newArray;
                 var elementType = enumerableInterface.GetGenericArguments()[0];
                 var underlyingType = Nullable.GetUnderlyingType(elementType) ?? elementType;
@@ -84,11 +89,12 @@ namespace GraphQL
                     newArray = (IList)Activator.CreateInstance(genericListType);
                 }
 
-                if (!(propertyValue is IEnumerable valueList)) return newArray;
-
-                foreach (var listItem in valueList)
+                if (propertyValue is IEnumerable valueList)
                 {
-                    newArray.Add(listItem == null ? null : GetPropertyValue(listItem, underlyingType));
+                    foreach (var listItem in valueList)
+                    {
+                        newArray.Add(listItem == null ? null : GetPropertyValue(listItem, underlyingType));
+                    }
                 }
 
                 if (fieldType.IsArray)
