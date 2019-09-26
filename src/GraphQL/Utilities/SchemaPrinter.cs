@@ -14,6 +14,8 @@ namespace GraphQL.Utilities
 
         private readonly SchemaPrinterOptions _options;
 
+        private Func<string, bool> _typeFilter;
+
         private readonly List<string> _scalars = new List<string>(
             new[]
             {
@@ -51,6 +53,8 @@ namespace GraphQL.Utilities
 
         public string PrintFilteredSchema(Func<string, bool> directiveFilter, Func<string, bool> typeFilter)
         {
+            _typeFilter = typeFilter;
+
             if (!Schema.Initialized)
             {
                 Schema.Initialize();
@@ -246,14 +250,22 @@ namespace GraphQL.Utilities
         {
             var fields = type?.Fields
                 .Select(x =>
-                new
                 {
-                    x.Name,
-                    Type = ResolveName(x.ResolvedType),
-                    Args = PrintArgs(x),
-                    Description = _options.IncludeDescriptions ? PrintDescription(type.Description, "  ") : string.Empty,
-                    Deprecation = _options.IncludeDeprecationReasons ? PrintDeprecation(type.DeprecationReason) : string.Empty,
-                }).ToList();
+                    var typeName = ResolveUnderlyingName(x.ResolvedType);
+                    if (!IsBuiltInScalar(typeName) && _typeFilter != null && !_typeFilter(typeName))
+                    {
+                        return null;
+                    }
+
+                    return new
+                    {
+                        x.Name,
+                        Type = ResolveName(x.ResolvedType),
+                        Args = PrintArgs(x),
+                        Description = _options.IncludeDescriptions ? PrintDescription(type.Description, "  ") : string.Empty,
+                        Deprecation = _options.IncludeDeprecationReasons ? PrintDeprecation(type.DeprecationReason) : string.Empty,
+                    };
+                }).Where(x => x != null).ToList();
 
             return string.Join(Environment.NewLine, fields?.Select(
                 f => "{3}  {0}{1}: {2}{4}".ToFormat(f.Name, f.Args, f.Type, f.Description, f.Deprecation)));
@@ -365,6 +377,24 @@ namespace GraphQL.Utilities
             }
 
             return type?.Name;
+        }
+
+        public static string ResolveUnderlyingName(IGraphType type)
+        {
+            while (true)
+            {
+                if (type is NonNullGraphType nullable)
+                {
+                    type = nullable.ResolvedType;
+                }
+
+                else if (type is ListGraphType list)
+                {
+                    type = list.ResolvedType;
+                }
+
+                else return type?.Name;
+            }
         }
 
         public string PrintDescription(string description, string indentation = "", bool firstInBlock = true)
